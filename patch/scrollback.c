@@ -30,9 +30,3 @@ kscrollup(const Arg* a)
 	}
 }
 
-#if SCROLLBACK_MOUSE_ALTSCREEN_PATCH
-int tisaltscr(void)
-{
-	return IS_SET(MODE_ALTSCREEN);
-}
-#endif // SCROLLBACK_MOUSE_ALTSCREEN_PATCH

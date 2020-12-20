@@ -5,22 +5,9 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *font = "Liberation Mono:pixelsize=12:antialias=true:autohint=true";
-#if FONT2_PATCH
-/* Spare fonts */
-static char *font2[] = {
-/*	"Inconsolata for Powerline:pixelsize=12:antialias=true:autohint=true", */
-/*	"Hack Nerd Font Mono:pixelsize=11:antialias=true:autohint=true", */
-};
-#endif // FONT2_PATCH
+static char *font = "Hack Nerd Font:pixelsize=16:antialias=true:autohint=true";
 
-#if RELATIVEBORDER_PATCH
-/* borderperc: percentage of cell width to use as a border
- *             0 = no border, 100 = border width is same as cell width */
-int borderperc = 20;
-#else
 static int borderpx = 2;
-#endif // RELATIVEBORDER_PATCH
 
 /*
  * What program is execed by st depends of these precedence rules:
@@ -81,19 +68,6 @@ static unsigned int blinktimeout = 800;
  */
 static unsigned int cursorthickness = 2;
 
-#if BOXDRAW_PATCH
-/*
- * 1: render most of the lines/blocks characters without using the font for
- *    perfect alignment between cells (U2500 - U259F except dashes/diagonals).
- *    Bold affects lines thickness if boxdraw_bold is not 0. Italic is ignored.
- * 0: disable (render all U25XX glyphs normally from the font).
- */
-const int boxdraw = 0;
-const int boxdraw_bold = 0;
-
-/* braille (U28XX):  1: render as adjacent "pixels",  0: use font */
-const int boxdraw_braille = 0;
-#endif // BOXDRAW_PATCH
 
 /*
  * bell volume. It must be a value between -100 and 100. Use 0 for disabling
@@ -121,10 +95,8 @@ char *termname = "st-256color";
  */
 unsigned int tabspaces = 8;
 
-#if ALPHA_PATCH
 /* bg opacity */
 float alpha = 0.8;
-#endif // ALPHA_PATCH
 
 /* Terminal colors (16 first used in escape sequence) */
 static const char *colorname[] = {
@@ -183,19 +155,12 @@ static unsigned int cursorshape = 2;
 static unsigned int cols = 80;
 static unsigned int rows = 24;
 
-#if THEMED_CURSOR_PATCH
-/*
- * Default shape of the mouse cursor
- */
-static char* mouseshape = "xterm";
-#else
 /*
  * Default colour and shape of the mouse cursor
  */
 static unsigned int mouseshape = XC_xterm;
 static unsigned int mousefg = 7;
 static unsigned int mousebg = 0;
-#endif // THEMED_CURSOR_PATCH
 
 /*
  * Color used to display font attributes when fontconfig selected a font which
@@ -203,7 +168,6 @@ static unsigned int mousebg = 0;
  */
 static unsigned int defaultattr = 11;
 
-#if XRESOURCES_PATCH
 /*
  * Xresources preferences to load at startup
  */
@@ -238,11 +202,8 @@ ResourcePref resources[] = {
 		{ "borderpx",     INTEGER, &borderpx },
 		{ "cwscale",      FLOAT,   &cwscale },
 		{ "chscale",      FLOAT,   &chscale },
-		#if ALPHA_PATCH
 		{ "alpha",        FLOAT,   &alpha },
-		#endif // ALPHA_PATCH
 };
-#endif // XRESOURCES_PATCH
 
 /*
  * Force mouse select/shortcuts while mask is active (when MODE_MOUSE is set).
@@ -257,49 +218,21 @@ static uint forcemousemod = ShiftMask;
  */
 static MouseShortcut mshortcuts[] = {
 	/* mask                 button   function        argument       release */
-	#if CLIPBOARD_PATCH
-	{ XK_ANY_MOD,           Button2, clippaste,      {.i = 0},      1 },
-	#else
 	{ XK_ANY_MOD,           Button2, selpaste,       {.i = 0},      1 },
-	#endif // CLIPBOARD_PATCH
-	#if SCROLLBACK_MOUSE_PATCH
 	{ ShiftMask,            Button4, kscrollup,      {.i = 1} },
 	{ ShiftMask,            Button5, kscrolldown,    {.i = 1} },
-	#else
-	{ ShiftMask,            Button4, ttysend,        {.s = "\033[5;2~"} },
-	{ ShiftMask,            Button5, ttysend,        {.s = "\033[6;2~"} },
-	#endif // SCROLLBACK_MOUSE_PATCH
-	#if SCROLLBACK_MOUSE_ALTSCREEN_PATCH
-	{ XK_NO_MOD,            Button4, kscrollup,      {.i = 1} },
-	{ XK_NO_MOD,            Button5, kscrolldown,    {.i = 1} },
-	#else
 	{ XK_ANY_MOD,           Button4, ttysend,        {.s = "\031"} },
 	{ XK_ANY_MOD,           Button5, ttysend,        {.s = "\005"} },
-	#endif // SCROLLBACK_MOUSE_ALTSCREEN_PATCH
 };
 
-#if SCROLLBACK_MOUSE_ALTSCREEN_PATCH
-static MouseShortcut maltshortcuts[] = {
-	/* mask                 button   function        argument       release */
-	#if CLIPBOARD_PATCH
-	{ XK_ANY_MOD,           Button2, clippaste,      {.i = 0},      1 },
-	#else
-	{ XK_ANY_MOD,           Button2, selpaste,       {.i = 0},      1 },
-	#endif // CLIPBOARD_PATCH
-	{ XK_ANY_MOD,           Button4, ttysend,        {.s = "\031"} },
-	{ XK_ANY_MOD,           Button5, ttysend,        {.s = "\005"} },
-};
-#endif // SCROLLBACK_MOUSE_ALTSCREEN_PATCH
 
 /* Internal keyboard shortcuts. */
 #define MODKEY Mod1Mask
 #define TERMMOD (ControlMask|ShiftMask)
 
-#if EXTERNALPIPE_PATCH // example command
 static char *openurlcmd[] = { "/bin/sh", "-c",
 	"xurls | dmenu -l 10 -w $WINDOWID | xargs -r open",
 	"externalpipe", NULL };
-#endif // EXTERNALPIPE_PATCH
 
 static Shortcut shortcuts[] = {
 	/* mask                 keysym          function         argument */
@@ -312,39 +245,13 @@ static Shortcut shortcuts[] = {
 	{ TERMMOD,              XK_Home,        zoomreset,       {.f =  0} },
 	{ TERMMOD,              XK_C,           clipcopy,        {.i =  0} },
 	{ TERMMOD,              XK_V,           clippaste,       {.i =  0} },
-	#if SCROLLBACK_PATCH
 	{ ShiftMask,            XK_Page_Up,     kscrollup,       {.i = -1} },
 	{ ShiftMask,            XK_Page_Down,   kscrolldown,     {.i = -1} },
-	#endif // SCROLLBACK_PATCH
-	#if CLIPBOARD_PATCH
-	{ TERMMOD,              XK_Y,           clippaste,       {.i =  0} },
-	{ ShiftMask,            XK_Insert,      clippaste,       {.i =  0} },
-	#else
 	{ TERMMOD,              XK_Y,           selpaste,        {.i =  0} },
 	{ ShiftMask,            XK_Insert,      selpaste,        {.i =  0} },
-	#endif // CLIPBOARD_PATCH
 	{ TERMMOD,              XK_Num_Lock,    numlock,         {.i =  0} },
-	#if COPYURL_PATCH || COPYURL_HIGHLIGHT_SELECTED_URLS_PATCH
-	{ MODKEY,               XK_l,           copyurl,         {.i =  0} },
-	#endif // COPYURL_PATCH
-	#if OPENCOPIED_PATCH
 	{ MODKEY,               XK_o,           opencopied,      {.v = "xdg-open"} },
-	#endif // OPENCOPIED_PATCH
-	#if NEWTERM_PATCH
-	{ TERMMOD,              XK_Return,      newterm,         {.i =  0} },
-	#endif // NEWTERM_PATCH
-	#if EXTERNALPIPE_PATCH
-	{ TERMMOD,              XK_U,           externalpipe,    { .v = openurlcmd } },
-	#endif // EXTERNALPIPE_PATCH
-	#if KEYBOARDSELECT_PATCH
 	{ TERMMOD,              XK_Escape,      keyboard_select, { 0 } },
-	#endif // KEYBOARDSELECT_PATCH
-	#if ISO14755_PATCH
-	{ TERMMOD,              XK_I,           iso14755,        {.i =  0} },
-	#endif // ISO14755_PATCH
-	#if INVERT_PATCH
-	{ TERMMOD,              XK_X,           invert,          { 0 } },
-	#endif // INVERT_PATCH
 };
 
 /*
@@ -368,13 +275,11 @@ static Shortcut shortcuts[] = {
  * position for a key.
  */
 
-#if !FIXKEYBOARDINPUT_PATCH
 /*
  * If you want keys other than the X11 function keys (0xFD00 - 0xFFFF)
  * to be mapped below, add them to this array.
  */
 static KeySym mappedkeys[] = { -1 };
-#endif // FIXKEYBOARDINPUT_PATCH
 
 /*
  * State bits to ignore when matching key or button events.  By default,
@@ -382,7 +287,6 @@ static KeySym mappedkeys[] = { -1 };
  */
 static uint ignoremod = Mod2Mask|XK_SWITCH_MOD;
 
-#if !FIXKEYBOARDINPUT_PATCH
 /*
  * This is the huge key array which defines all compatibility to the Linux
  * world. Please decide about changes wisely.
@@ -599,7 +503,6 @@ static Key key[] = {
 	{ XK_F34,           XK_NO_MOD,      "\033[21;5~",    0,    0},
 	{ XK_F35,           XK_NO_MOD,      "\033[23;5~",    0,    0},
 };
-#endif // FIXKEYBOARDINPUT_PATCH
 
 /*
  * Selection types' masks.
@@ -621,10 +524,8 @@ static char ascii_printable[] =
 	"@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_"
 	"`abcdefghijklmnopqrstuvwxyz{|}~";
 
-#if RIGHTCLICKTOPLUMB_PATCH
 /*
  * plumb_cmd is run on mouse button 3 click, with argument set to
  * current selection and with cwd set to the cwd of the active shell
  */
 static char *plumb_cmd = "plumb";
-#endif // RIGHTCLICKTOPLUMB_PATCH

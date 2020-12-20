@@ -22,9 +22,6 @@ options:
 config.h:
 	cp config.def.h config.h
 
-patches.h:
-	cp patches.def.h patches.h
-
 .c.o:
 	$(CC) $(STCFLAGS) -c $<
 
@@ -33,7 +30,7 @@ x.o: arg.h config.h st.h win.h $(LIGATURES_H)
 # Uncomment the below line for the ligatures patch
 #hb.o: st.h
 
-$(OBJ): config.h config.mk patches.h
+$(OBJ): config.h config.mk
 
 st: $(OBJ)
 	$(CC) -o $@ $(OBJ) $(STLDFLAGS)

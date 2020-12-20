@@ -20,17 +20,11 @@
 #include "st.h"
 #include "win.h"
 
-#if KEYBOARDSELECT_PATCH
 #include <X11/keysym.h>
 #include <X11/X.h>
-#endif // KEYBOARDSELECT_PATCH
 
 #if   defined(__linux)
  #include <pty.h>
-#elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__APPLE__)
- #include <util.h>
-#elif defined(__FreeBSD__) || defined(__DragonFly__)
- #include <libutil.h>
 #endif
 
 /* Arbitrary sizes */
@@ -40,9 +34,7 @@
 #define ESC_ARG_SIZ   16
 #define STR_BUF_SIZ   ESC_BUF_SIZ
 #define STR_ARG_SIZ   ESC_ARG_SIZ
-#if SCROLLBACK_PATCH
 #define HISTSIZE      2000
-#endif // SCROLLBACK_PATCH
 
 /* macros */
 #define IS_SET(flag)    ((term.mode & (flag)) != 0)
@@ -123,11 +115,9 @@ typedef struct {
 	int col;      /* nb col */
 	Line *line;   /* screen */
 	Line *alt;    /* alternate screen */
-	#if SCROLLBACK_PATCH
 	Line hist[HISTSIZE]; /* history buffer */
 	int histi;    /* history index */
 	int scr;      /* scroll back */
-	#endif // SCROLLBACK_PATCH
 	int *dirty;   /* dirtyness of lines */
 	TCursor c;    /* cursor */
 	int ocx;      /* old cursor col */
@@ -197,13 +187,8 @@ static void tnewline(int);
 static void tputtab(int);
 static void tputc(Rune);
 static void treset(void);
-#if SCROLLBACK_PATCH
 static void tscrollup(int, int, int);
 static void tscrolldown(int, int, int);
-#else
-static void tscrollup(int, int);
-static void tscrolldown(int, int);
-#endif // SCROLLBACK_PATCH
 static void tsetattr(int *, int);
 static void tsetchar(Rune, Glyph *, int, int);
 static void tsetdirt(int, int);
@@ -241,9 +226,6 @@ static CSIEscape csiescseq;
 static STREscape strescseq;
 static int iofd = 1;
 static int cmdfd;
-#if EXTERNALPIPEIN_PATCH && EXTERNALPIPE_PATCH
-static int csdfd;
-#endif // EXTERNALPIPEIN_PATCH
 static pid_t pid;
 
 static uchar utfbyte[UTF_SIZ + 1] = {0x80,    0, 0xC0, 0xE0, 0xF0};
@@ -436,19 +418,11 @@ tlinelen(int y)
 {
 	int i = term.col;
 
-	#if SCROLLBACK_PATCH
 	if (TLINE(y)[i - 1].mode & ATTR_WRAP)
 		return i;
 
 	while (i > 0 && TLINE(y)[i - 1].u == ' ')
  		--i;
-	#else
-	if (term.line[y][i - 1].mode & ATTR_WRAP)
-		return i;
-
-	while (i > 0 && term.line[y][i - 1].u == ' ')
-		--i;
-	#endif // SCROLLBACK_PATCH
 
 	return i;
 }
@@ -556,11 +530,7 @@ selsnap(int *x, int *y, int direction)
 		 * Snap around if the word wraps around at the end or
 		 * beginning of a line.
 		 */
-		#if SCROLLBACK_PATCH
 		prevgp = &TLINE(*y)[*x];
-		#else
-		prevgp = &term.line[*y][*x];
-		#endif // SCROLLBACK_PATCH
 		prevdelim = ISDELIM(prevgp->u);
 		for (;;) {
 			newx = *x + direction;
@@ -575,22 +545,14 @@ selsnap(int *x, int *y, int direction)
 					yt = *y, xt = *x;
 				else
 					yt = newy, xt = newx;
-				#if SCROLLBACK_PATCH
 				if (!(TLINE(yt)[xt].mode & ATTR_WRAP))
-				#else
-				if (!(term.line[yt][xt].mode & ATTR_WRAP))
-				#endif // SCROLLBACK_PATCH
 					break;
 			}
 
 			if (newx >= tlinelen(newy))
 				break;
 
-			#if SCROLLBACK_PATCH
 			gp = &TLINE(newy)[newx];
-			#else
-			gp = &term.line[newy][newx];
-			#endif // SCROLLBACK_PATCH
 			delim = ISDELIM(gp->u);
 			if (!(gp->mode & ATTR_WDUMMY) && (delim != prevdelim
 					|| (delim && gp->u != prevgp->u)))
@@ -611,22 +573,14 @@ selsnap(int *x, int *y, int direction)
 		*x = (direction < 0) ? 0 : term.col - 1;
 		if (direction < 0) {
 			for (; *y > 0; *y += direction) {
-				#if SCROLLBACK_PATCH
 				if (!(TLINE(*y-1)[term.col-1].mode
-				#else
-				if (!(term.line[*y-1][term.col-1].mode
-				#endif // SCROLLBACK_PATCH
 						& ATTR_WRAP)) {
 					break;
 				}
 			}
 		} else if (direction > 0) {
 			for (; *y < term.row-1; *y += direction) {
-				#if SCROLLBACK_PATCH
 				if (!(TLINE(*y)[term.col-1].mode
-				#else
-				if (!(term.line[*y][term.col-1].mode
-				#endif // SCROLLBACK_PATCH
 						& ATTR_WRAP)) {
 					break;
 				}
@@ -657,25 +611,13 @@ getsel(void)
 		}
 
 		if (sel.type == SEL_RECTANGULAR) {
-			#if SCROLLBACK_PATCH
 			gp = &TLINE(y)[sel.nb.x];
-			#else
-			gp = &term.line[y][sel.nb.x];
-			#endif // SCROLLBACK_PATCH
 			lastx = sel.ne.x;
 		} else {
-			#if SCROLLBACK_PATCH
 			gp = &TLINE(y)[sel.nb.y == y ? sel.nb.x : 0];
-			#else
-			gp = &term.line[y][sel.nb.y == y ? sel.nb.x : 0];
-			#endif // SCROLLBACK_PATCH
 			lastx = (sel.ne.y == y) ? sel.ne.x : term.col-1;
 		}
-		#if SCROLLBACK_PATCH
 		last = &TLINE(y)[MIN(lastx, linelen-1)];
-		#else
-		last = &term.line[y][MIN(lastx, linelen-1)];
-		#endif // SCROLLBACK_PATCH
 		while (last >= gp && last->u == ' ')
 			--last;
 
@@ -782,30 +724,12 @@ sigchld(int a)
 	int stat;
 	pid_t p;
 
-	#if EXTERNALPIPEIN_PATCH && EXTERNALPIPE_PATCH
-	if ((p = waitpid(-1, &stat, WNOHANG)) < 0)
-	#else
 	if ((p = waitpid(pid, &stat, WNOHANG)) < 0)
-	#endif // EXTERNALPIPEIN_PATCH
 		die("waiting for pid %hd failed: %s\n", pid, strerror(errno));
 
-	#if EXTERNALPIPE_PATCH
-	if (pid != p) {
-		if (p == 0 && wait(&stat) < 0)
-			die("wait: %s\n", strerror(errno));
-
-		/* reinstall sigchld handler */
-		signal(SIGCHLD, sigchld);
-		return;
-	}
-	#else
 	if (pid != p)
 		return;
-	#endif // EXTERNALPIPE_PATCH
 
-	#if EXTERNALPIPEIN_PATCH && EXTERNALPIPE_PATCH
-	close(csdfd);
-	#endif // EXTERNALPIPEIN_PATCH
 
 	if (WIFEXITED(stat) && WEXITSTATUS(stat))
 		die("child exited with status %d\n", WEXITSTATUS(stat));
@@ -842,9 +766,6 @@ int
 ttynew(char *line, char *cmd, char *out, char **args)
 {
 	int m, s;
-	#if EXTERNALPIPEIN_PATCH && EXTERNALPIPE_PATCH
-	struct sigaction sa;
-	#endif // EXTERNALPIPEIN_PATCH
 
 	if (out) {
 		term.mode |= MODE_PRINT;
@@ -891,24 +812,12 @@ ttynew(char *line, char *cmd, char *out, char **args)
 		break;
 	default:
 #ifdef __OpenBSD__
-		#if RIGHTCLICKTOPLUMB_PATCH
 		if (pledge("stdio rpath tty proc ps exec", NULL) == -1)
-		#else
-		if (pledge("stdio rpath tty proc", NULL) == -1)
-		#endif // RIGHTCLICKTOPLUMB_PATCH
 			die("pledge\n");
 #endif
 		close(s);
 		cmdfd = m;
-		#if EXTERNALPIPEIN_PATCH && EXTERNALPIPE_PATCH
-		csdfd = s;
-		memset(&sa, 0, sizeof(sa));
-		sigemptyset(&sa.sa_mask);
-		sa.sa_handler = sigchld;
-		sigaction(SIGCHLD, &sa, NULL);
-		#else
 		signal(SIGCHLD, sigchld);
-		#endif // EXTERNALPIPEIN_PATCH
 		break;
 	}
 	return cmdfd;
@@ -944,11 +853,9 @@ void
 ttywrite(const char *s, size_t n, int may_echo)
 {
 	const char *next;
-	#if SCROLLBACK_PATCH
 	Arg arg = (Arg) { .i = term.scr };
 
 	kscrolldown(&arg);
-	#endif // SCROLLBACK_PATCH
 
 	if (may_echo && IS_SET(MODE_ECHO))
 		twrite(s, n, 1);
@@ -1160,25 +1067,19 @@ tswapscreen(void)
 }
 
 void
-#if SCROLLBACK_PATCH
 tscrolldown(int orig, int n, int copyhist)
-#else
-tscrolldown(int orig, int n)
-#endif // SCROLLBACK_PATCH
 {
 	int i;
 	Line temp;
 
 	LIMIT(n, 0, term.bot-orig+1);
 
-	#if SCROLLBACK_PATCH
 	if (copyhist) {
 		term.histi = (term.histi - 1 + HISTSIZE) % HISTSIZE;
 		temp = term.hist[term.histi];
 		term.hist[term.histi] = term.line[term.bot];
 		term.line[term.bot] = temp;
 	}
-	#endif // SCROLLBACK_PATCH
 
 	tsetdirt(orig, term.bot-n);
 	tclearregion(0, term.bot-n+1, term.col-1, term.bot);
@@ -1189,27 +1090,18 @@ tscrolldown(int orig, int n)
 		term.line[i-n] = temp;
 	}
 
-	#if SCROLLBACK_PATCH
 	if (term.scr == 0)
 		selscroll(orig, n);
-	#else
-	selscroll(orig, n);
-	#endif // SCROLLBACK_PATCH
 }
 
 void
-#if SCROLLBACK_PATCH
 tscrollup(int orig, int n, int copyhist)
-#else
-tscrollup(int orig, int n)
-#endif // SCROLLBACK_PATCH
 {
 	int i;
 	Line temp;
 
 	LIMIT(n, 0, term.bot-orig+1);
 
-	#if SCROLLBACK_PATCH
 	if (copyhist) {
 		term.histi = (term.histi + 1) % HISTSIZE;
 		temp = term.hist[term.histi];
@@ -1219,7 +1111,6 @@ tscrollup(int orig, int n)
 
 	if (term.scr > 0 && term.scr < HISTSIZE)
 		term.scr = MIN(term.scr + n, HISTSIZE-1);
-	#endif // SCROLLBACK_PATCH
 
 	tclearregion(0, orig, term.col-1, orig+n-1);
 	tsetdirt(orig+n, term.bot);
@@ -1230,12 +1121,8 @@ tscrollup(int orig, int n)
 		term.line[i+n] = temp;
 	}
 
-	#if SCROLLBACK_PATCH
 	if (term.scr == 0)
 		selscroll(orig, -n);
-	#else
-	selscroll(orig, -n);
-	#endif // SCROLLBACK_PATCH
 }
 
 void
@@ -1264,11 +1151,7 @@ tnewline(int first_col)
 	int y = term.c.y;
 
 	if (y == term.bot) {
-		#if SCROLLBACK_PATCH
 		tscrollup(term.top, 1, 1);
-		#else
-		tscrollup(term.top, 1);
-		#endif // SCROLLBACK_PATCH
 	} else {
 		y++;
 	}
@@ -1364,10 +1247,6 @@ tsetchar(Rune u, Glyph *attr, int x, int y)
 	term.line[y][x] = *attr;
 	term.line[y][x].u = u;
 
-	#if BOXDRAW_PATCH
-	if (isboxdraw(u))
-		term.line[y][x].mode |= ATTR_BOXDRAW;
-	#endif // BOXDRAW_PATCH
 }
 
 void
@@ -1438,22 +1317,14 @@ void
 tinsertblankline(int n)
 {
 	if (BETWEEN(term.c.y, term.top, term.bot))
-		#if SCROLLBACK_PATCH
 		tscrolldown(term.c.y, n, 0);
-		#else
-		tscrolldown(term.c.y, n);
-		#endif // SCROLLBACK_PATCH
 }
 
 void
 tdeleteline(int n)
 {
 	if (BETWEEN(term.c.y, term.top, term.bot))
-		#if SCROLLBACK_PATCH
 		tscrollup(term.c.y, n, 0);
-		#else
-		tscrollup(term.c.y, n);
-		#endif // SCROLLBACK_PATCH
 }
 
 int32_t
@@ -1576,51 +1447,27 @@ tsetattr(int *attr, int l)
 			break;
 		case 38:
 			if ((idx = tdefcolor(attr, &i, l)) >= 0)
-				#if MONOCHROME_PATCH
-				term.c.attr.fg = defaultfg;
-				#else
 				term.c.attr.fg = idx;
-				#endif // MONOCHROME_PATCH
 			break;
 		case 39:
 			term.c.attr.fg = defaultfg;
 			break;
 		case 48:
 			if ((idx = tdefcolor(attr, &i, l)) >= 0)
-				#if MONOCHROME_PATCH
-				term.c.attr.bg = 0;
-				#else
 				term.c.attr.bg = idx;
-				#endif // MONOCHROME_PATCH
 			break;
 		case 49:
 			term.c.attr.bg = defaultbg;
 			break;
 		default:
 			if (BETWEEN(attr[i], 30, 37)) {
-				#if MONOCHROME_PATCH
-				term.c.attr.fg = defaultfg;
-				#else
 				term.c.attr.fg = attr[i] - 30;
-				#endif // MONOCHROME_PATCH
 			} else if (BETWEEN(attr[i], 40, 47)) {
-				#if MONOCHROME_PATCH
-				term.c.attr.bg = 0;
-				#else
 				term.c.attr.bg = attr[i] - 40;
-				#endif // MONOCHROME_PATCH
 			} else if (BETWEEN(attr[i], 90, 97)) {
-				#if MONOCHROME_PATCH
-				term.c.attr.fg = defaultfg;
-				#else
 				term.c.attr.fg = attr[i] - 90 + 8;
-				#endif // MONOCHROME_PATCH
 			} else if (BETWEEN(attr[i], 100, 107)) {
-				#if MONOCHROME_PATCH
-				term.c.attr.bg = 0;
-				#else
 				term.c.attr.bg = attr[i] - 100 + 8;
-				#endif // MONOCHROME_PATCH
 			} else {
 				fprintf(stderr,
 					"erresc(default): gfx attr %d unknown\n",
@@ -1914,19 +1761,11 @@ csihandle(void)
 		break;
 	case 'S': /* SU -- Scroll <n> line up */
 		DEFAULT(csiescseq.arg[0], 1);
-		#if SCROLLBACK_PATCH
 		tscrollup(term.top, csiescseq.arg[0], 0);
-		#else
-		tscrollup(term.top, csiescseq.arg[0]);
-		#endif // SCROLLBACK_PATCH
 		break;
 	case 'T': /* SD -- Scroll <n> line down */
 		DEFAULT(csiescseq.arg[0], 1);
-		#if SCROLLBACK_PATCH
 		tscrolldown(term.top, csiescseq.arg[0], 0);
-		#else
-		tscrolldown(term.top, csiescseq.arg[0]);
-		#endif // SCROLLBACK_PATCH
 		break;
 	case 'L': /* IL -- Insert <n> blank lines */
 		DEFAULT(csiescseq.arg[0], 1);
@@ -2439,11 +2278,7 @@ eschandle(uchar ascii)
 		return 0;
 	case 'D': /* IND -- Linefeed */
 		if (term.c.y == term.bot) {
-			#if SCROLLBACK_PATCH
 			tscrollup(term.top, 1, 1);
-			#else
-			tscrollup(term.top, 1);
-			#endif // SCROLLBACK_PATCH
 		} else {
 			tmoveto(term.c.x, term.c.y+1);
 		}
@@ -2456,11 +2291,7 @@ eschandle(uchar ascii)
 		break;
 	case 'M': /* RI -- Reverse index */
 		if (term.c.y == term.top) {
-			#if SCROLLBACK_PATCH
 			tscrolldown(term.top, 1, 1);
-			#else
-			tscrolldown(term.top, 1);
-			#endif // SCROLLBACK_PATCH
 		} else {
 			tmoveto(term.c.x, term.c.y-1);
 		}
@@ -2671,18 +2502,14 @@ void
 tresize(int col, int row)
 {
 	int i;
-	#if SCROLLBACK_PATCH
 	int j;
-	#endif // SCROLLBACK_PATCH
 	int minrow = MIN(row, term.row);
 	int mincol = MIN(col, term.col);
 	int *bp;
 	TCursor c;
 
-	#if KEYBOARDSELECT_PATCH
 	if ( row < term.row  || col < term.col )
 		toggle_winmode(trt_kbdselect(XK_Escape, NULL, 0));
-	#endif // KEYBOARDSELECT_PATCH
 
 	if (col < 1 || row < 1) {
 		fprintf(stderr,
@@ -2715,7 +2542,6 @@ tresize(int col, int row)
 	term.dirty = xrealloc(term.dirty, row * sizeof(*term.dirty));
 	term.tabs = xrealloc(term.tabs, col * sizeof(*term.tabs));
 
-	#if SCROLLBACK_PATCH
 	for (i = 0; i < HISTSIZE; i++) {
 		term.hist[i] = xrealloc(term.hist[i], col * sizeof(Glyph));
 		for (j = mincol; j < col; j++) {
@@ -2723,7 +2549,6 @@ tresize(int col, int row)
 			term.hist[i][j].u = ' ';
 		}
 	}
-	#endif // SCROLLBACK_PATCH
 
 	/* resize each row to new width, zero-pad if needed */
 	for (i = 0; i < minrow; i++) {
@@ -2783,11 +2608,7 @@ drawregion(int x1, int y1, int x2, int y2)
 			continue;
 
 		term.dirty[y] = 0;
-		#if SCROLLBACK_PATCH
 		xdrawline(TLINE(y), x1, y, x2);
-		#else
-		xdrawline(term.line[y], x1, y, x2);
-		#endif // SCROLLBACK_PATCH
 	}
 }
 
@@ -2809,17 +2630,9 @@ draw(void)
 
 	drawregion(0, 0, term.col, term.row);
 
-	#if SCROLLBACK_PATCH
 	if (term.scr == 0)
-	#endif // SCROLLBACK_PATCH
-	#if LIGATURES_PATCH
-	xdrawcursor(cx, term.c.y, term.line[term.c.y][cx],
-			term.ocx, term.ocy, term.line[term.ocy][term.ocx],
-			term.line[term.ocy], term.col);
-	#else
 	xdrawcursor(cx, term.c.y, term.line[term.c.y][cx],
 			term.ocx, term.ocy, term.line[term.ocy][term.ocx]);
-	#endif // LIGATURES_PATCH
 	term.ocx = cx;
 	term.ocy = term.c.y;
 	xfinishdraw();
